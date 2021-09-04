@@ -4,6 +4,8 @@ import random
 import graph
 
 track = 0
+start_time = None
+header_data = []
 
 
 def calc_distance(point1, point2):
@@ -16,6 +18,13 @@ def calc_distance(point1, point2):
         sum_result += temp
 
     return math.sqrt(sum_result)
+
+
+def timer():
+    global start_time
+    if start_time is not None:
+        print(time.time() - start_time, "seconds")
+    start_time = time.time()
 
 
 def prepare_array(array, n):
@@ -41,6 +50,7 @@ def prepare_array(array, n):
 def one_of_n_fold_cross_val(train_array):
     validation_array = prepare_array(train_array, n_fold)
     correct, incorrect = 0, 0
+    tp, fp, tn, fn = 0, 0, 0, 0
 
     for new_point in validation_array:
         actual_class = (new_point.split(","))[0]
@@ -49,18 +59,25 @@ def one_of_n_fold_cross_val(train_array):
 
         if actual_class == predicted_class:
             correct += 1
+            if actual_class == "Positive":
+                tp += 1
+            else:
+                tn += 1
         else:
             incorrect += 1
+            if predicted_class == "Positive":
+                fp += 1
+            else:
+                fn += 1
 
-    return correct / (correct + incorrect)
+    return correct / (correct + incorrect), [tp, fp, tn, fn]
 
 
 def predict_class(array, new_point):
     shortest_n = []
     for data_point in array:
         distance = calc_distance(new_point, data_point)
-        """if distance >= 1:
-            print("dp: " + data_point)"""
+
         element = {
             "d": distance,
             "point": data_point
@@ -71,13 +88,13 @@ def predict_class(array, new_point):
 
 
 def calc_weight(element, item_in_array):
-    return 1
-    # return 1 / calc_distance(element, item_in_array)
+    # return 1
+    # return 1 / max(calc_distance(element, item_in_array), 0.1)
 
-    # x = calc_distance(element, item_in_array)
-    # m = 10
-    # t = 0.1
-    # return (m*t) / (x*(1-t) + m*t)
+    x = calc_distance(element, item_in_array)
+    m = 10
+    t = 0.1
+    return (m*t) / (x*(1-t) + m*t)
 
 
 def take_poll(element, array):
@@ -135,7 +152,12 @@ def get_all_data():
     file_in_array = entire_file_string.split("\n")
     if len(file_in_array[len(file_in_array) - 1]) == 0:
         file_in_array.pop()
-    print(len(file_in_array))
+
+    global header_data
+    header_data = file_in_array[0].split(",")
+    file_in_array.pop(0)
+
+    print("Total tuples", len(file_in_array))
 
     for i in range(len(file_in_array)):
         if len(file_in_array[i]) == 0:
@@ -144,16 +166,32 @@ def get_all_data():
     return file_in_array
 
 
-def n_fold_cross_validation(file_in_array, arr_size):
+def n_fold_cross_validation(file_in_array):
+    tp, fp, tn, fn = 0, 0, 0, 0
+
     random.shuffle(file_in_array)
-    file_in_array = file_in_array[:arr_size]
+    file_in_array = file_in_array[:4000]
     average_accuracy = 0
     for yo in range(n_fold):
-        accuracy = one_of_n_fold_cross_val(file_in_array)
+        accuracy, d = one_of_n_fold_cross_val(file_in_array)
         average_accuracy += accuracy
+        tp += d[0]
+        fp += d[1]
+        tn += d[2]
+        fn += d[3]
+
         print(accuracy * 100)
     average_accuracy /= n_fold
+
+    precision = tp / (tp+fp)
+    recall = tp / (tp+fn)
+
     print("Accuracy: ", average_accuracy * 100)
+    print("Precision: ", precision)
+    print("Recall: ", recall)
+    print("f-measure: ", 2*precision*recall / (precision + recall))
+
+
 
 
 def input_point():
@@ -204,9 +242,8 @@ def partial_point(all_data, pt):
             result, confidence = predict_class(all_data, new_pt)
             y_values.append(result)
             y_values_2.append(confidence)
-            print(new_pt)
 
-    graph.plot_graph(x_values, y_values, mul, y_values_2, headers[x])
+    graph.plot_graph(x_values, y_values, mul, y_values_2, header_data[empty_at(pt)])
 
 
 def find_min_max(all_data):
@@ -232,19 +269,20 @@ def find_min_max(all_data):
 if __name__ == "__main__":
     n_fold = 10
     nn = 10
-    arr_size = 1000
-    headers = ["Result", "SpO2", "Pulse", "Temperature"]
+    # arr_size = 1000
     all_data = get_all_data()
 
     while True:
         choice = input("Press:\n1. N-fold cross validation\n2. Enter data point\n--> ")
         if choice == "1":
-            start = time.process_time()
-            n_fold_cross_validation(all_data, arr_size)
+            n_fold = int(input("Input value of n_fold: "))
+            n_fold_cross_validation(all_data)
         elif choice == "2":
             point = input_point()
             if empty_at(point) == -1:
-                print(predict_class(all_data, point))
+                res, conf = predict_class(all_data, point)
+                print("Predicted result - ", res)
+                print("Confidence level - ", conf)
             else:
                 partial_point(all_data, point)
 
